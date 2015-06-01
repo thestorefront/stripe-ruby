@@ -12,9 +12,13 @@ module Stripe
       end
     end
 
-
     def delete_bank_account(bank_account, params={}, opts={})
       response, opts = request(:delete, delete_bank_account_url(bank_account), params, opts)
+      refresh_from(response, opts)
+    end
+
+    def update_bank_account(bank_account, params={}, opts={})
+      response, opts = request(:post, update_bank_account_url(bank_account), params, opts)
       refresh_from(response, opts)
     end
 
@@ -44,6 +48,10 @@ module Stripe
     private
 
     def delete_bank_account_url(bank_account)
+      "#{url}/bank_accounts/#{CGI.escape(bank_account.id)}"
+    end
+
+    def update_bank_account_url(bank_account)
       "#{url}/bank_accounts/#{CGI.escape(bank_account.id)}"
     end
   end
