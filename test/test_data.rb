@@ -228,7 +228,7 @@ module Stripe
       }.merge(params)
     end
 
-    def make_bank_account(params={})
+    def test_bank_account(params={})
       {
         :bank_name => "STRIPE TEST BANK",
         :last4 => "6789",
