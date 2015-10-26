@@ -1,3 +1,73 @@
+=== 1.30.2 2015-10-12
+
+* Fix bug where `opts` didn't properly propagate to descendant `StripeObjects`
+
+=== 1.30.1 2015-10-10
+
+* Fix bug that prevent lists of hashes from being URI-encoded properly
+* Fix bug where filter conditions were not making it past the first instantiated `ListObject`
+
+=== 1.30.0 2015-10-09
+
+* Add `StripeObject#deleted?` for a reliable way to check whether an object is alive
+* Deprecate `StripeObject#refresh_from`
+* New parameter encoding scheme that doesn't use `URI.escape`
+
+=== 1.29.1 2015-10-06
+
+* Fix bug where ampersands were not being properly encoded
+
+=== 1.29.0 2015-10-05
+
+* Add pagination helpers `#auto_paging_each`, `#previous_page`, and `#next_page`
+
+=== 1.28.1 2015-10-05
+
+* Fix URI being referenced by file upload resources
+
+=== 1.28.0 2015-10-05
+
+* Make StripeObject's #save "upsert"-like; creates an object if new
+* Add #update_attributes to StripeObject for safe mass assignment
+* Properly mass assign attributes on calls to #save
+* Add question mark helpers for boolean fields (e.g. #paid? as well as old #paid)
+* Fix a bug that broke the API for StripeObject initialization
+* Remove use of deprecated URI.escape
+
+=== 1.27.2 2015-09-25
+
+* Correct the URLs used to fetch Bitcoin transactions.
+
+=== 1.27.1 2015-09-20
+
+* Use hash rockets for backwards compatibility.
+
+=== 1.27.0 2015-09-14
+
+* Add Orders, Products, and SKUs for Relay.
+
+=== 1.26.0 2015-09-11
+
+* Add support for 429 Rate Limited response
+
+=== 1.25.0 2015-08-17
+
+* Added support for refund listing and retrieval without an associated charge
+
+=== 1.24.0 2015-08-03
+
+* Added support for deleting managed accounts
+* Added support for dispute listing and retrieval
+* Bugfix: token objects now are the correct class
+
+=== 1.23.0 2015-07-06
+
+* Added request IDs and HTTP headers to errors.
+
+=== 1.22.0 2015-06-10
+
+* Added support for bank accounts and debit cards in managed accounts (via the `external_accounts` param)
+
 === 1.21.0 2015-04-14
 
 * Remove TLS cert revocation check. (All pre-heartbleed certs have expired.)

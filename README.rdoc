@@ -1,4 +1,19 @@
-= Stripe Ruby bindings {<img src="https://travis-ci.org/stripe/stripe-ruby.svg?branch=master" alt="Build Status" />}[https://travis-ci.org/stripe/stripe-ruby] {<img src="https://gemnasium.com/stripe/stripe-ruby.png" alt="Dependency Status" />}[https://gemnasium.com/stripe/stripe-ruby]
+= Stripe Ruby bindings {<img src="https://travis-ci.org/stripe/stripe-ruby.svg?branch=master" alt="Build Status" />}[https://travis-ci.org/stripe/stripe-ruby]
+
+The Stripe Ruby bindings provide a small SDK for convenient access to the
+Stripe API from applications written in the Ruby language. It provides a
+pre-defined set of classes for API resources that initialize themselves
+dynamically from API responses which allows the bindings to tolerate a number
+of different versions of the API.
+
+The bindings also provide other features. For example:
+
+* Easy configuration path for fast setup and use.
+* Helpers for pagination.
+* Tracking of "fresh" values in API resources so that partial updates can be
+  executed.
+* Built-in mechanisms for the serialization of parameters according to the
+  expectations of Stripe's API.
 
 == Documentation
 
@@ -40,4 +55,14 @@ compromised in transit and alter the code of gems fetched securely over https:
 
 == Development
 
-Test cases can be run with: `bundle exec rake test`
+Run all tests:
+
+    bundle exec rake
+
+Run a single test suite:
+
+    bundle exec ruby -Ilib/ test/stripe/util_test.rb
+
+Run a single test:
+
+    bundle exec ruby -Ilib/ test/stripe/util_test.rb -n /should.convert.names.to.symbols/

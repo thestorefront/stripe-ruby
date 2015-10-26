@@ -1,8 +1,8 @@
 module Stripe
   class Invoice < APIResource
-    include Stripe::APIOperations::List
+    extend Stripe::APIOperations::List
     include Stripe::APIOperations::Update
-    include Stripe::APIOperations::Create
+    extend Stripe::APIOperations::Create
 
     def self.upcoming(params, opts={})
       response, opts = request(:get, upcoming_url, params, opts)
@@ -11,7 +11,7 @@ module Stripe
 
     def pay(opts={})
       response, opts = request(:post, pay_url, {}, opts)
-      refresh_from(response, opts)
+      initialize_from(response, opts)
     end
 
     private
