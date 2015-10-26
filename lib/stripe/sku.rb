@@ -1,8 +1,8 @@
 module Stripe
-  class InvoiceItem < APIResource
+  class SKU < APIResource
     extend Stripe::APIOperations::List
     extend Stripe::APIOperations::Create
-    include Stripe::APIOperations::Delete
     include Stripe::APIOperations::Update
+
   end
 end

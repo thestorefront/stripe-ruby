@@ -1,3 +1,5 @@
+require "cgi"
+
 module Stripe
   module Util
     def self.objects_to_ids(h)
@@ -39,10 +41,15 @@ module Stripe
         'refund' => Refund,
         'subscription' => Subscription,
         'file_upload' => FileUpload,
+        'token' => Token,
         'transfer' => Transfer,
         'transfer_reversal' => Reversal,
         'bitcoin_receiver' => BitcoinReceiver,
-        'bitcoin_transaction' => BitcoinTransaction
+        'bitcoin_transaction' => BitcoinTransaction,
+        'dispute' => Dispute,
+        'product' => Product,
+        'sku' => SKU,
+        'order' => Order,
       }
     end
 
@@ -87,14 +94,33 @@ module Stripe
       end
     end
 
+    # Encodes a hash of parameters in a way that's suitable for use as query
+    # parameters in a URI or as form parameters in a request body. This mainly
+    # involves escaping special characters from parameter keys and values (e.g.
+    # `&`).
+    def self.encode_parameters(params)
+      Util.flatten_params(params).
+        map { |k,v| "#{url_encode(k)}=#{url_encode(v)}" }.join('&')
+    end
+
+    # Encodes a string in a way that makes it suitable for use in a set of
+    # query parameters in a URI or in a set of form parameters in a request
+    # body.
     def self.url_encode(key)
-      URI.escape(key.to_s, Regexp.new("[^#{URI::PATTERN::UNRESERVED}]"))
+      CGI.escape(key.to_s).
+        # Don't use strict form encoding by changing the square bracket control
+        # characters back to their literals. This is fine by the server, and
+        # makes these parameter strings easier to read.
+        gsub('%5B', '[').gsub('%5D', ']')
     end
 
     def self.flatten_params(params, parent_key=nil)
       result = []
-      params.each do |key, value|
-        calculated_key = parent_key ? "#{parent_key}[#{url_encode(key)}]" : url_encode(key)
+
+      # do not sort the final output because arrays (and arrays of hashes
+      # especially) can be order sensitive, but do sort incoming parameters
+      params.sort_by { |(k, v)| k.to_s }.each do |key, value|
+        calculated_key = parent_key ? "#{parent_key}[#{key}]" : "#{key}"
         if value.is_a?(Hash)
           result += flatten_params(value, calculated_key)
         elsif value.is_a?(Array)
@@ -103,6 +129,7 @@ module Stripe
           result << [calculated_key, value]
         end
       end
+
       result
     end
 
@@ -110,7 +137,7 @@ module Stripe
       result = []
       value.each do |elem|
         if elem.is_a?(Hash)
-          result += flatten_params(elem, calculated_key)
+          result += flatten_params(elem, "#{calculated_key}[]")
         elsif elem.is_a?(Array)
           result += flatten_params_array(elem, calculated_key)
         else
@@ -118,6 +145,16 @@ module Stripe
         end
       end
       result
+    end
+
+    def self.normalize_id(id)
+      if id.kind_of?(Hash) # overloaded id
+        params_hash = id.dup
+        id = params_hash.delete(:id)
+      else
+        params_hash = {}
+      end
+      [id, params_hash]
     end
 
     # The secondary opts argument can either be a string or hash

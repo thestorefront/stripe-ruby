@@ -1,29 +1,33 @@
 module Stripe
   class Customer < APIResource
-    include Stripe::APIOperations::Create
+    extend Stripe::APIOperations::Create
     include Stripe::APIOperations::Delete
     include Stripe::APIOperations::Update
-    include Stripe::APIOperations::List
+    extend Stripe::APIOperations::List
 
     def add_invoice_item(params, opts={})
       opts = @opts.merge(Util.normalize_opts(opts))
       InvoiceItem.create(params.merge(:customer => id), opts)
     end
 
-    def invoices
-      Invoice.all({ :customer => id }, @opts)
+    def invoices(params={}, opts={})
+      opts = @opts.merge(Util.normalize_opts(opts))
+      Invoice.all(params.merge(:customer => id), opts)
     end
 
-    def invoice_items
-      InvoiceItem.all({ :customer => id }, @opts)
+    def invoice_items(params={}, opts={})
+      opts = @opts.merge(Util.normalize_opts(opts))
+      InvoiceItem.all(params.merge(:customer => id), opts)
     end
 
-    def upcoming_invoice
-      Invoice.upcoming({ :customer => id }, @opts)
+    def upcoming_invoice(params={}, opts={})
+      opts = @opts.merge(Util.normalize_opts(opts))
+      Invoice.upcoming(params.merge(:customer => id), opts)
     end
 
-    def charges
-      Charge.all({ :customer => id }, @opts)
+    def charges(params={}, opts={})
+      opts = @opts.merge(Util.normalize_opts(opts))
+      Charge.all(params.merge(:customer => id), opts)
     end
 
     def create_upcoming_invoice(params={}, opts={})
@@ -33,25 +37,25 @@ module Stripe
 
     def cancel_subscription(params={}, opts={})
       response, opts = request(:delete, subscription_url, params, opts)
-      refresh_from({ :subscription => response }, opts, true)
+      initialize_from({ :subscription => response }, opts, true)
       subscription
     end
 
     def update_subscription(params={}, opts={})
       response, opts = request(:post, subscription_url, params, opts)
-      refresh_from({ :subscription => response }, opts, true)
+      initialize_from({ :subscription => response }, opts, true)
       subscription
     end
 
     def create_subscription(params={}, opts={})
       response, opts = request(:post, subscriptions_url, params, opts)
-      refresh_from({ :subscription => response }, opts, true)
+      initialize_from({ :subscription => response }, opts, true)
       subscription
     end
 
     def delete_discount
       _, opts = request(:delete, discount_url)
-      refresh_from({ :discount => nil }, opts, true)
+      initialize_from({ :discount => nil }, opts, true)
     end
 
     private

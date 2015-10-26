@@ -1,6 +1,6 @@
 module Stripe
   class ApplicationFee < APIResource
-    include Stripe::APIOperations::List
+    extend Stripe::APIOperations::List
 
     def self.url
       '/v1/application_fees'
@@ -8,7 +8,7 @@ module Stripe
 
     def refund(params={}, opts={})
       response, opts = request(:post, refund_url, params, opts)
-      refresh_from(response, opts)
+      initialize_from(response, opts)
     end
 
     private

@@ -1,8 +1,8 @@
 module Stripe
   class Plan < APIResource
-    include Stripe::APIOperations::Create
+    extend Stripe::APIOperations::Create
     include Stripe::APIOperations::Delete
-    include Stripe::APIOperations::List
+    extend Stripe::APIOperations::List
     include Stripe::APIOperations::Update
   end
 end

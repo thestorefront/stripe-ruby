@@ -6,24 +6,39 @@ module Stripe
       @metadata_supported = {
         :charge => {
           :new => Stripe::Charge.method(:new),
-          :test => method(:test_charge),
-          :url => "/v1/charges/#{test_charge()[:id]}"
+          :test => method(:make_charge),
+          :url => "/v1/charges/#{make_charge()[:id]}"
         },
         :customer => {
           :new => Stripe::Customer.method(:new),
-          :test => method(:test_customer),
-          :url => "/v1/customers/#{test_customer()[:id]}"
+          :test => method(:make_customer),
+          :url => "/v1/customers/#{make_customer()[:id]}"
         },
         :recipient => {
           :new => Stripe::Recipient.method(:new),
-          :test => method(:test_recipient),
-          :url => "/v1/recipients/#{test_recipient()[:id]}"
+          :test => method(:make_recipient),
+          :url => "/v1/recipients/#{make_recipient()[:id]}"
         },
         :transfer => {
           :new => Stripe::Transfer.method(:new),
-          :test => method(:test_transfer),
-          :url => "/v1/transfers/#{test_transfer()[:id]}"
-        }
+          :test => method(:make_transfer),
+          :url => "/v1/transfers/#{make_transfer()[:id]}"
+        },
+        :product => {
+          :new => Stripe::Product.method(:new),
+          :test => method(:make_product),
+          :url => "/v1/products/#{make_product()[:id]}"
+        },
+        :order => {
+          :new => Stripe::Order.method(:new),
+          :test => method(:make_order),
+          :url => "/v1/orders/#{make_order()[:id]}"
+        },
+        :sku => {
+          :new => Stripe::SKU.method(:new),
+          :test => method(:make_sku),
+          :url => "/v1/skus/#{make_sku()[:id]}"
+        },
       }
 
       @base_url = 'https://api.stripe.com'
@@ -45,7 +60,7 @@ module Stripe
 
       if is_greater_than_ruby_1_9?
         check_metadata({:metadata => {:initial => 'true'}},
-                      'metadata[uuid]=6735&metadata[initial]=',
+                      'metadata[initial]=&metadata[uuid]=6735',
                       update_actions)
       end
     end
@@ -78,7 +93,7 @@ module Stripe
           obj.metadata['uuid'] = '6735'
         end
         params = {:metadata => {'type' => 'summer', 'uuid' => '6735'}}
-        curl_args = Stripe.uri_encode(params)
+        curl_args = Stripe::Util.encode_parameters(params)
         check_metadata({:metadata => {'type' => 'christmas'}},
                        curl_args,
                        update_actions)
@@ -92,11 +107,11 @@ module Stripe
         url = @base_url + methods[:url]
 
         initial_test_obj = test.call(initial_params)
-        @mock.expects(:get).once.returns(test_response(initial_test_obj))
+        @mock.expects(:get).once.returns(make_response(initial_test_obj))
 
         final_test_obj = test.call()
         @mock.expects(:post).once.
-          returns(test_response(final_test_obj)).
+          returns(make_response(final_test_obj)).
           with(url, nil, curl_args)
 
         obj = neu.call("test")

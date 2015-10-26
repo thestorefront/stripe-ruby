@@ -1,9 +1,9 @@
 module Stripe
   class BitcoinReceiver < APIResource
-    include Stripe::APIOperations::Create
+    extend Stripe::APIOperations::Create
     include Stripe::APIOperations::Update
     include Stripe::APIOperations::Delete
-    include Stripe::APIOperations::List
+    extend Stripe::APIOperations::List
 
     def self.url
       "/v1/bitcoin/receivers"

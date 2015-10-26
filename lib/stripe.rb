@@ -39,6 +39,7 @@ require 'stripe/token'
 require 'stripe/event'
 require 'stripe/transfer'
 require 'stripe/recipient'
+require 'stripe/bank_account'
 require 'stripe/card'
 require 'stripe/bank_account'
 require 'stripe/subscription'
@@ -48,6 +49,10 @@ require 'stripe/reversal'
 require 'stripe/application_fee_refund'
 require 'stripe/bitcoin_receiver'
 require 'stripe/bitcoin_transaction'
+require 'stripe/dispute'
+require 'stripe/product'
+require 'stripe/sku'
+require 'stripe/order'
 
 # Errors
 require 'stripe/errors/stripe_error'
@@ -56,9 +61,11 @@ require 'stripe/errors/api_connection_error'
 require 'stripe/errors/card_error'
 require 'stripe/errors/invalid_request_error'
 require 'stripe/errors/authentication_error'
+require 'stripe/errors/rate_limit_error'
 
 module Stripe
   DEFAULT_CA_BUNDLE_PATH = File.dirname(__FILE__) + '/data/ca-certificates.crt'
+
   @api_base = 'https://api.stripe.com'
   @connect_base = 'https://connect.stripe.com'
   @uploads_base = 'https://uploads.stripe.com'
@@ -66,9 +73,12 @@ module Stripe
   @ssl_bundle_path  = DEFAULT_CA_BUNDLE_PATH
   @verify_ssl_certs = true
 
+  @open_timeout = 30
+  @read_timeout = 80
 
   class << self
-    attr_accessor :api_key, :api_base, :verify_ssl_certs, :api_version, :connect_base, :uploads_base
+    attr_accessor :api_key, :api_base, :verify_ssl_certs, :api_version, :connect_base, :uploads_base,
+                  :open_timeout, :read_timeout
   end
 
   def self.api_url(url='', api_base_url=nil)
@@ -112,19 +122,19 @@ module Stripe
     case method.to_s.downcase.to_sym
     when :get, :head, :delete
       # Make params into GET parameters
-      url += "#{URI.parse(url).query ? '&' : '?'}#{uri_encode(params)}" if params && params.any?
+      url += "#{URI.parse(url).query ? '&' : '?'}#{Util.encode_parameters(params)}" if params && params.any?
       payload = nil
     else
       if headers[:content_type] && headers[:content_type] == "multipart/form-data"
         payload = params
       else
-        payload = uri_encode(params)
+        payload = Util.encode_parameters(params)
       end
     end
 
     request_opts.update(:headers => request_headers(api_key).update(headers),
-                        :method => method, :open_timeout => 30,
-                        :payload => payload, :url => url, :timeout => 80)
+                        :method => method, :open_timeout => open_timeout,
+                        :payload => payload, :url => url, :timeout => read_timeout)
 
     begin
       response = execute_request(request_opts)
@@ -139,8 +149,8 @@ module Stripe
         raise
       end
     rescue RestClient::ExceptionWithResponse => e
-      if rcode = e.http_code and rbody = e.http_body
-        handle_api_error(rcode, rbody)
+      if e.response
+        handle_api_error(e.response)
       else
         handle_restclient_error(e, api_base_url)
       end
@@ -197,10 +207,13 @@ module Stripe
     "uname lookup failed"
   end
 
-
+  # DEPRECATED. Use `Util#encode_parameters` instead.
   def self.uri_encode(params)
-    Util.flatten_params(params).
-      map { |k,v| "#{k}=#{Util.url_encode(v)}" }.join('&')
+    Util.encode_parameters(params)
+  end
+  class << self
+    extend Gem::Deprecate
+    deprecate :uri_encode, "Stripe::Util#encode_parameters", 2016, 01
   end
 
   def self.request_headers(api_key)
@@ -241,45 +254,54 @@ module Stripe
                  "(HTTP response code was #{rcode})", rcode, rbody)
   end
 
-  def self.handle_api_error(rcode, rbody)
+  def self.handle_api_error(resp)
     begin
-      error_obj = JSON.parse(rbody)
+      error_obj = JSON.parse(resp.body)
       error_obj = Util.symbolize_names(error_obj)
-      error = error_obj[:error] or raise StripeError.new # escape from parsing
+      error = error_obj[:error]
+      raise StripeError.new unless error && error.is_a?(Hash)
 
     rescue JSON::ParserError, StripeError
-      raise general_api_error(rcode, rbody)
+      raise general_api_error(resp.code, resp.body)
     end
 
-    case rcode
+    case resp.code
     when 400, 404
-      raise invalid_request_error error, rcode, rbody, error_obj
+      raise invalid_request_error(error, resp, error_obj)
     when 401
-      raise authentication_error error, rcode, rbody, error_obj
+      raise authentication_error(error, resp, error_obj)
     when 402
-      raise card_error error, rcode, rbody, error_obj
+      raise card_error(error, resp, error_obj)
+    when 429
+      raise rate_limit_error(error, resp, error_obj)
     else
-      raise api_error error, rcode, rbody, error_obj
+      raise api_error(error, resp, error_obj)
     end
 
   end
 
-  def self.invalid_request_error(error, rcode, rbody, error_obj)
-    InvalidRequestError.new(error[:message], error[:param], rcode,
-                            rbody, error_obj)
+  def self.invalid_request_error(error, resp, error_obj)
+    InvalidRequestError.new(error[:message], error[:param], resp.code,
+                            resp.body, error_obj, resp.headers)
   end
 
-  def self.authentication_error(error, rcode, rbody, error_obj)
-    AuthenticationError.new(error[:message], rcode, rbody, error_obj)
+  def self.authentication_error(error, resp, error_obj)
+    AuthenticationError.new(error[:message], resp.code, resp.body, error_obj,
+                            resp.headers)
   end
 
-  def self.card_error(error, rcode, rbody, error_obj)
+  def self.rate_limit_error(error, resp, error_obj)
+    RateLimitError.new(error[:message], resp.code, resp.body, error_obj,
+                       resp.headers)
+  end
+
+  def self.card_error(error, resp, error_obj)
     CardError.new(error[:message], error[:param], error[:code],
-                  rcode, rbody, error_obj)
+                  resp.code, resp.body, error_obj, resp.headers)
   end
 
-  def self.api_error(error, rcode, rbody, error_obj)
-    APIError.new(error[:message], rcode, rbody, error_obj)
+  def self.api_error(error, resp, error_obj)
+    APIError.new(error[:message], resp.code, resp.body, error_obj, resp.headers)
   end
 
   def self.handle_restclient_error(e, api_base_url=nil)

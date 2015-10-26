@@ -10,16 +10,8 @@ module Stripe
     end
 
     def initialize(id=nil, opts={})
-      # parameter overloading!
-      if id.kind_of?(Hash)
-        @retrieve_params = id.dup
-        @retrieve_params.delete(:id)
-        id = id[:id]
-      else
-        @retrieve_params = {}
-      end
-
-      @opts = opts
+      id, @retrieve_params = Util.normalize_id(id)
+      @opts = Util.normalize_opts(opts)
       @values = {}
       # This really belongs in APIResource, but not putting it there allows us
       # to have a unified inspect method
@@ -29,7 +21,24 @@ module Stripe
     end
 
     def self.construct_from(values, opts={})
-      self.new(values[:id]).refresh_from(values, opts)
+      values = Stripe::Util.symbolize_names(values)
+
+      # work around protected #initialize_from for now
+      self.new(values[:id]).send(:initialize_from, values, opts)
+    end
+
+    # Determines the equality of two Stripe objects. Stripe objects are
+    # considered to be equal if they have the same set of values and each one
+    # of those values is the same.
+    def ==(other)
+      @values == other.instance_variable_get(:@values)
+    end
+
+    # Indicates whether or not the resource has been deleted on the server.
+    # Note that some, but not all, resources can indicate whether they have
+    # been deleted.
+    def deleted?
+      @values.fetch(:deleted, false)
     end
 
     def to_s(*args)
@@ -41,31 +50,36 @@ module Stripe
       "#<#{self.class}:0x#{self.object_id.to_s(16)}#{id_string}> JSON: " + JSON.pretty_generate(@values)
     end
 
+    # Re-initializes the object based on a hash of values (usually one that's
+    # come back from an API call). Adds or removes value accessors as necessary
+    # and updates the state of internal data.
+    #
+    # Please don't use this method. If you're trying to do mass assignment, try
+    # #initialize_from instead.
     def refresh_from(values, opts, partial=false)
-      @opts = opts
-      @original_values = Marshal.load(Marshal.dump(values)) # deep copy
-      removed = partial ? Set.new : Set.new(@values.keys - values.keys)
-      added = Set.new(values.keys - @values.keys)
-      # Wipe old state before setting new.  This is useful for e.g. updating a
-      # customer, where there is no persistent card parameter.  Mark those values
-      # which don't persist as transient
+      initialize_from(values, opts, partial)
+    end
+    extend Gem::Deprecate
+    deprecate :refresh_from, "#update_attributes", 2016, 01
 
-      instance_eval do
-        remove_accessors(removed)
-        add_accessors(added)
-      end
-      removed.each do |k|
-        @values.delete(k)
-        @transient_values.add(k)
-        @unsaved_values.delete(k)
-      end
+    # Mass assigns attributes on the model.
+    #
+    # This is a version of +update_attributes+ that takes some extra options
+    # for internal use.
+    #
+    # ==== Attributes
+    #
+    # * +values+ - Hash of values to use to update the current attributes of
+    #   the object.
+    #
+    # ==== Options
+    #
+    # * +:opts+ Options for StripeObject like an API key.
+    def update_attributes(values, opts = {})
       values.each do |k, v|
-        @values[k] = Util.convert_to_stripe_object(v, @opts)
-        @transient_values.delete(k)
-        @unsaved_values.delete(k)
+        @values[k] = Util.convert_to_stripe_object(v, opts)
+        @unsaved_values.add(k)
       end
-
-      return self
     end
 
     def [](k)
@@ -93,8 +107,17 @@ module Stripe
     end
 
     def to_hash
+      maybe_to_hash = lambda do |value|
+        value.respond_to?(:to_hash) ? value.to_hash : value
+      end
+
       @values.inject({}) do |acc, (key, value)|
-        acc[key] = value.respond_to?(:to_hash) ? value.to_hash : value
+        acc[key] = case value
+                   when Array
+                     value.map(&maybe_to_hash)
+                   else
+                     maybe_to_hash.call(value)
+                   end
         acc
       end
     end
@@ -131,7 +154,7 @@ module Stripe
         new_keys = update.keys.map(&:to_sym)
 
         # remove keys at the server, but not known locally
-        if @original_values.include?(key)
+        if @original_values[key]
           keys_to_unset = @original_values[key].keys - new_keys
           keys_to_unset.each {|key| update[key] = ''}
         end
@@ -199,9 +222,15 @@ module Stripe
       class << self; self; end
     end
 
+    def protected_fields
+      []
+    end
+
     def remove_accessors(keys)
+      f = protected_fields
       metaclass.instance_eval do
         keys.each do |k|
+          next if f.include?(k)
           next if @@permanent_attributes.include?(k)
           k_eq = :"#{k}="
           remove_method(k) if method_defined?(k)
@@ -210,9 +239,11 @@ module Stripe
       end
     end
 
-    def add_accessors(keys)
+    def add_accessors(keys, values)
+      f = protected_fields
       metaclass.instance_eval do
         keys.each do |k|
+          next if f.include?(k)
           next if @@permanent_attributes.include?(k)
           k_eq = :"#{k}="
           define_method(k) { @values[k] }
@@ -226,6 +257,11 @@ module Stripe
             @values[k] = v
             @unsaved_values.add(k)
           end
+
+          if [FalseClass, TrueClass].include?(values[k].class)
+            k_bool = :"#{k}?"
+            define_method(k_bool) { @values[k] }
+          end
         end
       end
     end
@@ -234,7 +270,10 @@ module Stripe
       # TODO: only allow setting in updateable classes.
       if name.to_s.end_with?('=')
         attr = name.to_s[0...-1].to_sym
-        add_accessors([attr])
+
+        # the second argument is only required when adding boolean accessors
+        add_accessors([attr], {})
+
         begin
           mth = method(name)
         rescue NameError
@@ -258,6 +297,49 @@ module Stripe
 
     def respond_to_missing?(symbol, include_private = false)
       @values && @values.has_key?(symbol) || super
+    end
+
+    # Re-initializes the object based on a hash of values (usually one that's
+    # come back from an API call). Adds or removes value accessors as necessary
+    # and updates the state of internal data.
+    #
+    # Protected on purpose! Please do not expose.
+    #
+    # ==== Options
+    #
+    # * +:values:+ Hash used to update accessors and values.
+    # * +:opts:+ Options for StripeObject like an API key.
+    # * +:partial:+ Indicates that the re-initialization should not attempt to
+    #   remove accessors.
+    def initialize_from(values, opts, partial=false)
+      @opts = Util.normalize_opts(opts)
+      @original_values = Marshal.load(Marshal.dump(values)) # deep copy
+
+      removed = partial ? Set.new : Set.new(@values.keys - values.keys)
+      added = Set.new(values.keys - @values.keys)
+
+      # Wipe old state before setting new.  This is useful for e.g. updating a
+      # customer, where there is no persistent card parameter.  Mark those values
+      # which don't persist as transient
+
+      instance_eval do
+        remove_accessors(removed)
+        add_accessors(added, values)
+      end
+
+      removed.each do |k|
+        @values.delete(k)
+        @transient_values.add(k)
+        @unsaved_values.delete(k)
+      end
+
+      update_attributes(values, opts)
+      values.each do |k, _|
+        @transient_values.delete(k)
+        @unsaved_values.delete(k)
+      end
+
+      self
     end
   end
 end
